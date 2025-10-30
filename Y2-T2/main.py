@@ -1,55 +1,97 @@
-import time
-from typing import List
-# Import the actual RPi.GPIO library for hardware control
+###############################
+# Import libraries            #
+###############################
 import RPi.GPIO as GPIO
+import time
+import random
+import os
+import vlc
 
-# 1. Pin Definitions
-PIN_STOVE = 17
-PIN_DOWNSTAIRS = 18
-PIN_UPSTAIRS = 27
-ALL_PINS: List[int] = [PIN_STOVE, PIN_DOWNSTAIRS, PIN_UPSTAIRS]
+# --- Pin Definitions (BCM numbering scheme) ---
+# GPIO17 - The Stove LED (The start of the fire in Pudding Lane)
+STOVE_LED = 17
+# GPIO18 - The Lower Floor LED
+LOWER_FLOOR_LED = 18
+# GPIO24 - The Upper Floor LED
+UPPER_FLOOR_LED = 24
+
+# --- Setup GPIO ---
+# Use BCM (Broadcom SOC Channel) pin numbering
+GPIO.setmode(GPIO.BCM) 
+
+# Set up the pins as outputs
+GPIO.setup([STOVE_LED, LOWER_FLOOR_LED, UPPER_FLOOR_LED], GPIO.OUT)
+
+# Set up PWM (Pulse Width Modulation) for smooth brightness control
+# Frequency is set to 100Hz for smooth transitions
+PWM_FREQ = 100
+
+pwm_stove = GPIO.PWM(STOVE_LED, PWM_FREQ)
+pwm_lower = GPIO.PWM(LOWER_FLOOR_LED, PWM_FREQ)
+pwm_upper = GPIO.PWM(UPPER_FLOOR_LED, PWM_FREQ)
+
+# Start all PWM channels at 0% brightness (off)
+pwm_stove.start(0)
+pwm_lower.start(0)
+pwm_upper.start(0)
+
+# List of PWM objects for easy iteration
+led_pwms = [pwm_stove, pwm_lower, pwm_upper]
 
 
-if __name__ == "__main__":
-    # Define the duration for ON and OFF states
-    FLASH_DURATION = 4
+def flicker_leds():
+    vlc_instance = None
+    player = None
 
+    print("Initializing VLC audio...")
     try:
-        # 2. Setup the GPIO configuration ONCE (outside the loop)
-        # Use BCM numbering (GPIO numbers, not physical pin numbers)
-        GPIO.setmode(GPIO.BCM)
-        print("GPIO setup complete (using BCM numbering).")
-
-        # 3. Set all pins as output
-        for pin in ALL_PINS:
-            GPIO.setup(pin, GPIO.OUT)
-            GPIO.output(pin, GPIO.LOW) # Ensure pins start off
+        # 1. Initialize VLC instance
+        vlc_instance = vlc.Instance()
         
-        print(f"\nStarting infinite toggle loop (ON/OFF every {FLASH_DURATION}s). Press Ctrl+C to stop.")
+        # 2. Create a media player object
+        player = vlc_instance.media_player_new()
         
-        # 4. Start the continuous loop
+        # 3. Get the absolute path of the audio file for robustness
+        audio_file_path = os.path.abspath('fire.mp3')
+        
+        # 4. Create a media object and set it on the player
+        media = vlc_instance.media_new(audio_file_path)
+        player.set_media(media)
+        
+        # 5. Start playback
+        player.play()
+        print("Fire sound started. Starting LED flicker simulation... Press Ctrl+C to stop.")
+    
+   
         while True:
-            # --- ON CYCLE ---
-            print(f"\n--- ACTION: Turning all pins ON (HIGH) for {FLASH_DURATION} seconds ---")
-            for pin in ALL_PINS:
-                GPIO.output(pin, GPIO.HIGH)
-
-            time.sleep(FLASH_DURATION)
-
-            # --- OFF CYCLE ---
-            print(f"--- ACTION: Turning all pins OFF (LOW) for {FLASH_DURATION} seconds ---")
-            for pin in ALL_PINS:
-                GPIO.output(pin, GPIO.LOW)
-            
-            time.sleep(FLASH_DURATION)
+            # Iterate through each LED to give it a unique, staggered flicker
+            for led in led_pwms:
+                # 1. Random Brightness (Duty Cycle)
+                # Range from 50% (dim) to 100% (bright) for a strong, burning effect
+                brightness = random.randint(50, 100) 
+                
+                # 2. Apply the new brightness
+                led.ChangeDutyCycle(brightness)
+                
+                # 3. Random Delay
+                # A short, random delay makes the flicker look irregular and natural
+                delay = random.uniform(0.05, 0.15)
+                time.sleep(delay)
 
     except KeyboardInterrupt:
-        # This block catches the user pressing Ctrl+C gracefully
-        print("\n\nLoop manually stopped by user (KeyboardInterrupt).")
-    except Exception as e:
-        # Catch any other unexpected errors
-        print(f"\nAn unexpected error occurred: {e}")
+        # Exit cleanly when Ctrl+C is pressed
+        print("\nSimulation stopped by user.")
+    
     finally:
-        # 5. Always perform cleanup to reset GPIO state when the script ends
+        # --- Cleanup GPIO ---
+        # Stop all PWM channels
+        for led in led_pwms:
+            led.stop()
+        
+        # Reset all GPIO pins to a safe state
         GPIO.cleanup()
-        print("GPIO cleanup performed. Script exiting.")
+        print("GPIO cleaned up. Simulation finished.")
+
+# Run the simulation
+if __name__ == '__main__':
+    flicker_leds()
