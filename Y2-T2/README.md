@@ -1,5 +1,11 @@
 # Year 2 Term 2 - The great fire of London, code to make the LED's flicker
 
+From a base install of rpasberrypi some packages are required.
+
+```
+sudo apt install python3 python3-vlc
+```
+
 In order to make this code run correctly we needed to make it run as a service on the raspberry pi so that the fire sound would play.
 
 The base directory used in this case was /home/raspberrypi/source and this repo cloned into it, you will need to alter directories if you clone somewhere else.
