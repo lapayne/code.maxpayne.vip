@@ -5,7 +5,7 @@ From a base install of rpasberrypi some packages are required.
 ```
 sudo apt install python3 python3-vlc
 ```
-
+You will need to enable the GPIO pins using the raspi-config command
 In order to make this code run correctly we needed to make it run as a service on the raspberry pi so that the fire sound would play.
 
 The base directory used in this case was /home/raspberrypi/source and this repo cloned into it, you will need to alter directories if you clone somewhere else.
