@@ -1,0 +1,109 @@
+###############################
+# Import libraries            #
+###############################
+import RPi.GPIO as GPIO
+import time
+import random
+import os
+import vlc
+
+# --- Pin Definitions (BCM numbering scheme) ---
+# GPIO17 - The Stove LED (The start of the fire in Pudding Lane)
+LED1 = 14 #blue
+# GPIO18 - The Lower Floor LED
+LED2 = 15 #green
+LED3 = 18
+LED4 = 23
+# GPIO24 - The Upper Floor LED
+LED5 = 24
+
+# --- Setup GPIO ---
+# Use BCM (Broadcom SOC Channel) pin numbering
+GPIO.setmode(GPIO.BCM) 
+
+# Set up the pins as outputs
+GPIO.setup([LED1, LED2, LED3, LED4, LED5], GPIO.OUT)
+
+# Set up PWM (Pulse Width Modulation) for smooth brightness control
+# Frequency is set to 100Hz for smooth transitions
+PWM_FREQ = 100
+
+pwm_stove = GPIO.PWM(LED1, PWM_FREQ)
+pwm_lower1 = GPIO.PWM(LED2, PWM_FREQ)
+pwm_upper1 = GPIO.PWM(LED3, PWM_FREQ)
+pwm_lower2 = GPIO.PWM(LED4, PWM_FREQ)
+pwm_upper2 = GPIO.PWM(LED5, PWM_FREQ)
+
+
+# Start all PWM channels at 0% brightness (off)
+pwm_stove.start(0)
+pwm_lower1.start(0)
+pwm_upper1.start(0)
+pwm_lower2.start(0)
+pwm_upper2.start(0)
+
+
+# List of PWM objects for easy iteration
+led_pwms = [pwm_stove, pwm_lower1, pwm_upper1, pwm_lower2, pwm_upper2]
+
+
+def flicker_leds():
+    vlc_instance = None
+    player = None
+
+    print("Initializing VLC audio...")
+    try:
+        vlc_instance = vlc.Instance("--aout=alsa --no-xlib")
+    
+        # 2. Create a media player object
+        player = vlc_instance.media_player_new()
+    
+        # 3. Get the absolute path of the audio file for robustness
+        audio_file_path = os.path.abspath('fire.mp3')
+    
+        # 4. Create a media object
+        media = vlc_instance.media_new(
+            audio_file_path,
+            ':input-repeat=-1'  # Pass option directly here
+        )
+    
+      # Set the media object on the player
+        player.set_media(media)
+    
+      # 5. Start playback
+        player.play()
+        print("Fire sound started (looping constantly). Starting LED flicker simulation... Press Ctrl+C to stop.")
+    
+   
+        while True:
+            # Iterate through each LED to give it a unique, staggered flicker
+            for led in led_pwms:
+                # 1. Random Brightness (Duty Cycle)
+                # Range from 50% (dim) to 100% (bright) for a strong, burning effect
+                brightness = random.randint(50, 100) 
+                
+                # 2. Apply the new brightness
+                led.ChangeDutyCycle(brightness)
+                
+                # 3. Random Delay
+                # A short, random delay makes the flicker look irregular and natural
+                delay = random.uniform(0.05, 0.15)
+                time.sleep(delay)
+
+    except KeyboardInterrupt:
+        # Exit cleanly when Ctrl+C is pressed
+        print("\nSimulation stopped by user.")
+    
+    finally:
+        # --- Cleanup GPIO ---
+        # Stop all PWM channels
+        for led in led_pwms:
+            led.stop()
+        
+        # Reset all GPIO pins to a safe state
+        GPIO.cleanup()
+        print("GPIO cleaned up. Simulation finished.")
+
+# Run the simulation
+if __name__ == '__main__':
+    flicker_leds()

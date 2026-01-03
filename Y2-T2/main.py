@@ -8,87 +8,101 @@ import os
 import vlc
 
 # --- Pin Definitions (BCM numbering scheme) ---
-# GPIO17 - The Stove LED (The start of the fire in Pudding Lane)
-STOVE_LED = 17
-# GPIO18 - The Lower Floor LED
-LOWER_FLOOR_LED = 18
-# GPIO24 - The Upper Floor LED
-UPPER_FLOOR_LED = 24
+LED1 = 14 #blue
+LED2 = 15 #green
+LED3 = 18
+LED4 = 23
+LED5 = 24
 
-# --- Setup GPIO ---
-# Use BCM (Broadcom SOC Channel) pin numbering
-GPIO.setmode(GPIO.BCM) 
-
-# Set up the pins as outputs
-GPIO.setup([STOVE_LED, LOWER_FLOOR_LED, UPPER_FLOOR_LED], GPIO.OUT)
-
-# Set up PWM (Pulse Width Modulation) for smooth brightness control
-# Frequency is set to 100Hz for smooth transitions
+# --- Setup GPIO (Remainder of setup unchanged) ---
+GPIO.setmode(GPIO.BCM)
+GPIO.setup([LED1, LED2, LED3, LED4, LED5], GPIO.OUT)
 PWM_FREQ = 100
 
-pwm_stove = GPIO.PWM(STOVE_LED, PWM_FREQ)
-pwm_lower = GPIO.PWM(LOWER_FLOOR_LED, PWM_FREQ)
-pwm_upper = GPIO.PWM(UPPER_FLOOR_LED, PWM_FREQ)
+pwm_stove = GPIO.PWM(LED1, PWM_FREQ)
+pwm_lower1 = GPIO.PWM(LED2, PWM_FREQ)
+pwm_upper1 = GPIO.PWM(LED3, PWM_FREQ)
+pwm_lower2 = GPIO.PWM(LED4, PWM_FREQ)
+pwm_upper2 = GPIO.PWM(LED5, PWM_FREQ)
 
-# Start all PWM channels at 0% brightness (off)
 pwm_stove.start(0)
-pwm_lower.start(0)
-pwm_upper.start(0)
+pwm_lower1.start(0)
+pwm_upper1.start(0)
+pwm_lower2.start(0)
+pwm_upper2.start(0)
 
-# List of PWM objects for easy iteration
-led_pwms = [pwm_stove, pwm_lower, pwm_upper]
+led_pwms = [pwm_stove, pwm_lower1, pwm_upper1, pwm_lower2, pwm_upper2]
 
+# --- Global Player Reference ---
+# These must be global so the callback can access them
+GLOBAL_PLAYER = None 
+GLOBAL_MEDIA = None
+
+# --- Event Handler Function (THE FIX) ---
+def audio_end_callback(event):
+    global GLOBAL_PLAYER
+    
+    # 1. Add a brief pause to allow VLC state transition
+    time.sleep(0.1) 
+    
+    # 2. Re-play the media from the beginning.
+    # The combination of end-reached event + stop/play is the most reliable way.
+    GLOBAL_PLAYER.stop()
+    GLOBAL_PLAYER.play()
+    print("VLC Loop Triggered.")
+
+# -----------------------------------------------
 
 def flicker_leds():
+    global GLOBAL_PLAYER, GLOBAL_MEDIA
+    
     vlc_instance = None
-    player = None
-
+    
     print("Initializing VLC audio...")
     try:
-        # 1. Initialize VLC instance
-        vlc_instance = vlc.Instance()
-        
-        # 2. Create a media player object
-        player = vlc_instance.media_player_new()
-        
-        # 3. Get the absolute path of the audio file for robustness
+        vlc_instance = vlc.Instance("--aout=alsa --no-xlib")
+        GLOBAL_PLAYER = vlc_instance.media_player_new()
+
         audio_file_path = os.path.abspath('fire.mp3')
+        GLOBAL_MEDIA = vlc_instance.media_new(audio_file_path)
+
+        GLOBAL_PLAYER.set_media(GLOBAL_MEDIA)
         
-        # 4. Create a media object and set it on the player
-        media = vlc_instance.media_new(audio_file_path)
-        player.set_media(media)
+        # 💥 EVENT LISTENER SETUP 💥
+        event_manager = GLOBAL_PLAYER.event_manager()
         
-        # 5. Start playback
-        player.play()
-        print("Fire sound started. Starting LED flicker simulation... Press Ctrl+C to stop.")
-    
-   
+        # Attach the callback function to the 'Media Player End Reached' event
+        event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, audio_end_callback)
+
+        GLOBAL_PLAYER.play()
+        print("Fire sound started (Event-looping). Starting LED flicker simulation... Press Ctrl+C to stop.")
+
+        # --- Main Flicker Loop ---
         while True:
-            # Iterate through each LED to give it a unique, staggered flicker
+            # Use a slightly longer main loop sleep to reduce CPU load 
+            # while the event loop is running asynchronously.
+            time.sleep(0.01) 
+            
             for led in led_pwms:
-                # 1. Random Brightness (Duty Cycle)
-                # Range from 50% (dim) to 100% (bright) for a strong, burning effect
-                brightness = random.randint(50, 100) 
-                
-                # 2. Apply the new brightness
+                brightness = random.randint(50, 100)
                 led.ChangeDutyCycle(brightness)
-                
-                # 3. Random Delay
-                # A short, random delay makes the flicker look irregular and natural
                 delay = random.uniform(0.05, 0.15)
                 time.sleep(delay)
 
     except KeyboardInterrupt:
-        # Exit cleanly when Ctrl+C is pressed
         print("\nSimulation stopped by user.")
-    
+
     finally:
         # --- Cleanup GPIO ---
-        # Stop all PWM channels
         for led in led_pwms:
             led.stop()
-        
-        # Reset all GPIO pins to a safe state
+
+        # Clean up VLC resources
+        if GLOBAL_PLAYER:
+            # Detach the event handler 
+            event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
+            GLOBAL_PLAYER.stop()
+            
         GPIO.cleanup()
         print("GPIO cleaned up. Simulation finished.")
 
