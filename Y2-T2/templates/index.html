@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pi Script Runner</title>
+</head>
+<body>
+    <h1>Run Device Script</h1>
+    <button onclick="runPythonScript()">Execute Script</button>
+    <pre id="output"></pre>
+
+    <script>
+        function runPythonScript() {
+            document.getElementById('output').textContent = "Running script...";
+            
+            // Send an HTTP POST request to the '/run-script' endpoint
+            fetch('/run-script', {
+                method: 'POST'
+            })
+            .then(response => response.json()) // Parse the JSON response
+            .then(data => {
+                // Update the pre tag with the script's output
+                document.getElementById('output').textContent = data.result;
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                document.getElementById('output').textContent = 'An error occurred during the request.';
+            });
+        }
+    </script>
+</body>
+</html>
